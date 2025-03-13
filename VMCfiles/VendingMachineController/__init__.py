@@ -7,4 +7,4 @@ from transitions.extensions.states import add_state_features, Timeout as StateMa
 class CustomStateMachine(StateMachine): pass
 
 # Note: leave it here
-from .machine import Machine
+from .VMC import Machine

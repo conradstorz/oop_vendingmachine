@@ -7,15 +7,15 @@ import sys
 from time import sleep
 from . import CustomStateMachine
 from cctalk import SerialInterface
-from vendingmachine.sound import sound
-from vendingmachine.persistence import OneOffFileStorage as PersistentStorage
-from vendingmachine.watchdog import Watchdog
-from vendingmachine.i2c_relay import I2cRelay
-from vendingmachine.config.config import config
-from vendingmachine.coin_acceptor import MyCoinAcceptor
-from vendingmachine.dispenser import Dispenser
-from vendingmachine.cashier import Cashier
-from vendingmachine.gpio import Button, Led
+from VMCfiles.sound import sound
+from VMCfiles.persistence import OneOffFileStorage as PersistentStorage
+from VMCfiles.watchdog import Watchdog
+from VMCfiles.i2c_relay import I2cRelay
+from VMCfiles.config.config import config
+from VMCfiles.coin_acceptor import MyCoinAcceptor
+from VMCfiles.dispenser import Dispenser
+from VMCfiles.cashier import Cashier
+from VMCfiles.gpio import Button, Led
 
 logger = logging.getLogger(__name__)
 logging.getLogger('transitions').setLevel(logging.INFO)
