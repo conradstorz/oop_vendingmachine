@@ -4,7 +4,7 @@
 VMC_main.py
 Main entry point for the vending machine control system.
 
-This version abstracts away Raspberry Pi–specific hardware details so that
+This version abstracts away Raspberry Pi-specific hardware details so that
 the code can be tested on non-Pi platforms. Hardware-specific modules such as
 i2c_relay (which relies on smbus) should provide dummy implementations when
 the underlying libraries are unavailable.
@@ -89,7 +89,8 @@ class Machine:
         # For now we use MDBPaymentHandler (which reuses the coin acceptor logic).
         # Later, you can switch to OnlinePaymentHandler as needed.
         self.payment_handler = MDBPaymentHandler(
-            iface=SerialInterface(config.get("coin_acceptor", "interface")),
+            # iface=SerialInterface(config.get("coin_acceptor", "interface")),
+            iface=None,
             on_payment_received=self.on_coin_insert,
             on_error=self.on_ca_error,
         )
