@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Vending Machine Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f2f5;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    .machine-container {
+      background: #fff;
+      border: 2px solid #ccc;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      padding: 20px;
+      width: 320px;
+      text-align: center;
+    }
+    .machine-image {
+      width: 100%;
+      height: auto;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    .display {
+      background: #000;
+      color: #0f0;
+      font-size: 24px;
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    .button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 5px;
+      cursor: pointer;
+      border: none;
+      border-radius: 5px;
+    }
+    .vend-button {
+      background: #28a745;
+      color: #fff;
+    }
+    .coin-button {
+      background: #007bff;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <div class="machine-container">
+    <!-- Placeholder image of a vending machine -->
+    <img src="https://via.placeholder.com/300x150?text=Vending+Machine" alt="Vending Machine" class="machine-image">
+    <div class="display" id="credit-display">Credit: $0</div>
+    <div>
+      <button class="button vend-button" id="vend-button">Vend Item</button>
+      <button class="button coin-button" id="coin-button">Insert Coin</button>
+    </div>
+    <div style="margin-top: 20px;">
+      <strong>State:</strong> <span id="machine-state">unknown</span>
+    </div>
+  </div>
+
+  <script>
+    // Base URL for your FastAPI endpoints
+    const API_BASE = "http://localhost:8000";
+
+    // Fetch and update the machine status every 2 seconds
+    async function updateStatus() {
+      try {
+        const response = await fetch(API_BASE + "/machine/status");
+        const data = await response.json();
+        document.getElementById("credit-display").innerText = "Credit: $" + data.deposit;
+        document.getElementById("machine-state").innerText = data.state;
+      } catch (error) {
+        console.error("Error fetching status:", error);
+      }
+    }
+    setInterval(updateStatus, 2000);
+    updateStatus();
+
+    // Simulate a coin insert with a fixed value (e.g., $1)
+    document.getElementById("coin-button").addEventListener("click", async () => {
+      try {
+        const response = await fetch(API_BASE + "/machine/coin_insert", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ amount: 1 })
+        });
+        const result = await response.json();
+        console.log(result.message);
+        updateStatus();
+      } catch (error) {
+        console.error("Error inserting coin:", error);
+      }
+    });
+
+    // Simulate vend item action
+    document.getElementById("vend-button").addEventListener("click", async () => {
+      try {
+        const response = await fetch(API_BASE + "/machine/vend_item", {
+          method: "POST"
+        });
+        const result = await response.json();
+        console.log(result.message);
+        updateStatus();
+      } catch (error) {
+        console.error("Error vending item:", error);
+      }
+    });
+  </script>
+</body>
+</html>
