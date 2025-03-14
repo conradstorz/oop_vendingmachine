@@ -3,6 +3,11 @@
 """
 VMC_main.py
 Main entry point for the vending machine control system.
+
+This version abstracts away Raspberry Pi–specific hardware details so that
+the code can be tested on non-Pi platforms. Hardware-specific modules such as
+i2c_relay (which relies on smbus) should provide dummy implementations when
+the underlying libraries are unavailable.
 """
 
 from loguru import logger
@@ -11,7 +16,7 @@ from time import sleep
 import os
 import signal
 
-# Loguru configuration: create the LOGS directory and rotate logs at midnight.
+# Loguru configuration: Create the LOGS directory and rotate logs at midnight.
 os.makedirs("LOGS", exist_ok=True)
 logger.remove()
 logger.add("LOGS/vending_machine_{time:YYYY-MM-DD}.log",
@@ -26,6 +31,8 @@ import one_off_file_storage as PersistentStorage
 import watchdog
 import config
 
+# Hardware abstraction: these modules should now provide dummy implementations
+# for testing on non-Pi platforms.
 from i2c_relay import I2cRelay
 from button import Button
 from dispenser import Dispenser
@@ -35,7 +42,7 @@ from payment_handler import MDBPaymentHandler, OnlinePaymentHandler
 from custom_state_machine import CustomStateMachine
 
 class Machine:
-    # Define finite states and transitions.
+    # Define FSM states and transitions.
     states = [
         {"name": "oos"},  # Out Of Service
         {"name": "idling"},
@@ -62,7 +69,7 @@ class Machine:
             send_event=True,
             initial="oos",
         )
-        # Set up persistence storage for deposit and stats.
+        # Set up persistent storage.
         self.p9e = PersistentStorage(config.get("persistence", "directory"))
         self.deposit = self.p9e.get_int("deposit", fallback=0)
         self.stats = {
@@ -78,16 +85,16 @@ class Machine:
         self.dispenser = Dispenser(after_eject=self.on_item_ejected)
         self.cashier = Cashier()
 
-        # Initialize the payment handler using the MDB implementation.
-        # (Replace MDBPaymentHandler with OnlinePaymentHandler as needed.)
+        # Initialize the payment handler.
+        # For now we use MDBPaymentHandler (which reuses the coin acceptor logic).
+        # Later, you can switch to OnlinePaymentHandler as needed.
         self.payment_handler = MDBPaymentHandler(
             iface=SerialInterface(config.get("coin_acceptor", "interface")),
             on_payment_received=self.on_coin_insert,
             on_error=self.on_ca_error,
         )
         self.payment_handler.start()
-        # Allow time for hardware stabilization.
-        sleep(2)
+        sleep(2)  # Allow hardware stabilization.
 
         # Start the watchdog to monitor machine errors.
         self.watchdog = watchdog.Watchdog(
@@ -97,7 +104,7 @@ class Machine:
         )
         self.watchdog.start()
 
-        # Initialize state by triggering idle.
+        # Initialize state by triggering "idle".
         self.trigger("idle")
         logger.info("Machine initialized with state: '{}', deposit: {}", self.state, self.deposit)
 
@@ -177,8 +184,7 @@ class Machine:
     def on_enter_oos(self, _event):
         logger.info("Entering 'oos' state")
         self.front_panel.off()
-        self.payment_handler.stop()  # Disable payments in OOS.
-        # (Disable other controls as necessary.)
+        self.payment_handler.stop()  # Disable payments when out-of-service.
 
     def on_exit_oos(self, _event):
         logger.info("Exiting 'oos' state")
@@ -235,7 +241,6 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, machine.sig_handler)
     signal.signal(signal.SIGTERM, machine.sig_handler)
 
-    # Keep the main thread alive.
     try:
         while True:
             sleep(1)
