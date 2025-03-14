@@ -1,33 +1,42 @@
 # -*- coding: utf-8 -*-
-
-import logging
+import random
 from time import sleep
-from vendingmachine.config.config import config
-from vendingmachine.usb.printer import VKP80III
-
-logger = logging.getLogger(__name__)
-
+from loguru import logger
 
 class Dispenser:
-    """Device-specific dispenser. Rewrite it if needed"""
+    """
+    Dummy Dispenser module using loguru for logging.
+    Simulates vending a product and randomly fails.
+    """
 
-    def __init__(self, after_eject):
-        self._printer = VKP80III(
-            vendor=int(config.get("printer", "vendor"), 0),
-            product=int(config.get("printer", "product"), 0),
-        )
-        self._callback_after_eject = after_eject
-        self.init()
-
-    def __getattr__(self, attr):
-        """Delegate unknown methods to printer instance"""
-        return getattr(self._printer, attr)
+    def __init__(self):
+        logger.info("Dummy Dispenser initialized.")
 
     def init(self):
-        self._printer.reset()
+        logger.info("Dummy Dispenser: Initialization complete.")
 
-    def eject(self):
-        logger.debug("call dispenser.eject()")
-        self._printer.cut_at_black_mark()
-        sleep(3)
-        self._callback_after_eject()
+    def vend(self, product_id):
+        """
+        Simulate vending a product.
+        
+        :param product_id: Identifier for the product to vend.
+        :return: True if the vend succeeded, False otherwise.
+        """
+        logger.info("Dummy Dispenser: Attempting to vend product '{}'.", product_id)
+        sleep(1)  # Simulate time delay for vend operation.
+        if random.random() < 0.8:
+            logger.info("Dummy Dispenser: Vend successful for product '{}'.", product_id)
+            return True
+        else:
+            logger.error("Dummy Dispenser: Vend failed for product '{}'.", product_id)
+            return False
+
+# Test the dummy dispenser when running this module directly.
+if __name__ == "__main__":
+    dispenser = Dispenser()
+    dispenser.init()
+    result = dispenser.vend("test_product")
+    if result:
+        logger.info("Vend operation completed successfully.")
+    else:
+        logger.error("Vend operation failed.")
