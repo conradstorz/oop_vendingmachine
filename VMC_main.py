@@ -29,7 +29,7 @@ logger.add("LOGS/vending_machine_{time:YYYY-MM-DD}.log",
 import sound
 from one_off_file_storage import OneOffFileStorage as PersistentStorage
 import watchdog
-from configuration import config
+from configuration import config as from_config
 
 # Hardware abstraction: these modules should now provide dummy implementations
 # for testing on non-Pi platforms.
@@ -46,7 +46,7 @@ class Machine:
         {"name": "oos"},  # Out Of Service
         {"name": "idling"},
         {"name": "entertaining",
-         "timeout": config.getint("button", "press_timeout", fallback=10),
+         "timeout": from_config.getint("button", "press_timeout", fallback=10),
          "on_timeout": "on_timeout_entertaining"},
         {"name": "ejecting"},
     ]
@@ -60,52 +60,61 @@ class Machine:
     ]
 
     def __init__(self, kwargs=None):
-        logger.info("Initializing Machine...")
-        self.sm = CustomStateMachine(
+        logger.info("Initializing Vending Machine...")
+        
+        # Create the state machine controlling the machine's states.
+        self.state_machine = CustomStateMachine(
             model=self,
             states=Machine.states,
             transitions=Machine.transitions,
             send_event=True,
             initial="oos",
         )
-        # Set up persistent storage.
-        self.p9e = PersistentStorage(config.get("persistence", "directory"))
-        self.deposit = self.p9e.get_int("deposit", fallback=0)
+        
+        # Set up persistent storage for saving machine state and statistics.
+        # 'storage' holds deposit value, cash box totals, and item sold count.
+        self.storage = PersistentStorage(from_config.get("persistence", "directory"))
+        self.deposit = self.storage.get_int("deposit", fallback=0)
         self.stats = {
-            "cash_box": self.p9e.get_int("cash_box", fallback=0),
-            "items_sold": self.p9e.get_int("items_sold", fallback=0),
+            "cash_box": self.storage.get_int("cash_box", fallback=0),
+            "items_sold": self.storage.get_int("items_sold", fallback=0),
         }
-        self.item_price = config.getint("item", "item_price")
-        self.front_panel = I2cRelay(**dict(config.items("front_panel")))
+        
+        # Load the item price from the configuration.
+        self.item_price = from_config.getint("item", "item_price")
+        
+        # Initialize hardware abstractions.
+        self.front_panel = I2cRelay(**dict(from_config.items("front_panel")))
         self.button = Button(
-            gpio_pin=config.getint("button", "gpio_pin"), on_press=self.on_button_press
+            gpio_pin=from_config.getint("button", "gpio_pin"),
+            on_press=self.on_button_press
         )
-        self.button_led = I2cRelay(**dict(config.items("button_led")))
+        self.button_led = I2cRelay(**dict(from_config.items("button_led")))
         self.dispenser = Dispenser(after_eject=self.on_item_ejected)
         self.cashier = Cashier()
-
-        # Initialize the payment handler.
-        # For now we use MDBPaymentHandler (which reuses the coin acceptor logic).
-        # Later, you can switch to OnlinePaymentHandler as needed.
+        
+        # Set up payment handler (currently using MDBPaymentHandler for MDB payments).
+        # This component listens for payment events and updates the deposit.
         self.payment_handler = MDBPaymentHandler(
             iface=None,
             on_payment_received=self.on_coin_insert,
             on_error=self.on_ca_error,
         )
         self.payment_handler.start()
-        sleep(2)  # Allow hardware stabilization.
-
-        # Start the watchdog to monitor machine errors.
+        sleep(2)  # Allow time for hardware to stabilize.
+        
+        # Start the watchdog to monitor system health and errors.
         self.watchdog = watchdog.Watchdog(
             error_probe_cb=self.has_errors,
             on_error_cb=self.on_error,
             on_recover_cb=self.on_recover,
         )
         self.watchdog.start()
-
-        # Initialize state by triggering "idle".
+        
+        # Begin operation by setting the machine to its idle state.
         self.trigger("idle")
-        logger.info("Machine initialized with state: '{}', deposit: {}", self.state, self.deposit)
+        logger.info("Vending Machine initialized: state='{}', deposit={}", self.state, self.deposit)
+
 
     @property
     def state(self):
