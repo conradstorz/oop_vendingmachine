@@ -1,10 +1,17 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+VMC_main.py
+Main entry point for the vending machine control system.
+"""
+
 from loguru import logger
 import sys
 from time import sleep
 import os
+import signal
 
-# Loguru configuration
+# Loguru configuration: create the LOGS directory and rotate logs at midnight.
 os.makedirs("LOGS", exist_ok=True)
 logger.remove()
 logger.add("LOGS/vending_machine_{time:YYYY-MM-DD}.log",
@@ -19,18 +26,18 @@ import one_off_file_storage as PersistentStorage
 import watchdog
 import config
 
-# Updated imports for missing classes
-from coin_acceptor import SerialInterface, MyCoinAcceptor
 from i2c_relay import I2cRelay
 from button import Button
 from dispenser import Dispenser
 from cashier import Cashier
-
-logger.info("Setting up Machine...")
+from coin_acceptor import SerialInterface
+from payment_handler import MDBPaymentHandler, OnlinePaymentHandler
+from custom_state_machine import CustomStateMachine
 
 class Machine:
+    # Define finite states and transitions.
     states = [
-        {"name": "oos"},
+        {"name": "oos"},  # Out Of Service
         {"name": "idling"},
         {"name": "entertaining",
          "timeout": config.getint("button", "press_timeout", fallback=10),
@@ -55,6 +62,7 @@ class Machine:
             send_event=True,
             initial="oos",
         )
+        # Set up persistence storage for deposit and stats.
         self.p9e = PersistentStorage(config.get("persistence", "directory"))
         self.deposit = self.p9e.get_int("deposit", fallback=0)
         self.stats = {
@@ -69,24 +77,27 @@ class Machine:
         self.button_led = I2cRelay(**dict(config.items("button_led")))
         self.dispenser = Dispenser(after_eject=self.on_item_ejected)
         self.cashier = Cashier()
-        self.coin_acceptor_interface = SerialInterface(
-            config.get("coin_acceptor", "interface")
+
+        # Initialize the payment handler using the MDB implementation.
+        # (Replace MDBPaymentHandler with OnlinePaymentHandler as needed.)
+        self.payment_handler = MDBPaymentHandler(
+            iface=SerialInterface(config.get("coin_acceptor", "interface")),
+            on_payment_received=self.on_coin_insert,
+            on_error=self.on_ca_error,
         )
-        self.coin_acceptor = MyCoinAcceptor(
-            self.coin_acceptor_interface,
-            insert_cb=self.on_coin_insert,
-            error_cb=self.on_ca_error,
-        )
-        self.coin_acceptor_interface.start()
-        logger.info("Coin acceptor interface started, waiting for stabilization...")
+        self.payment_handler.start()
+        # Allow time for hardware stabilization.
         sleep(2)
+
+        # Start the watchdog to monitor machine errors.
         self.watchdog = watchdog.Watchdog(
             error_probe_cb=self.has_errors,
             on_error_cb=self.on_error,
             on_recover_cb=self.on_recover,
         )
         self.watchdog.start()
-        logger.info("Watchdog thread started.")
+
+        # Initialize state by triggering idle.
         self.trigger("idle")
         logger.info("Machine initialized with state: '{}', deposit: {}", self.state, self.deposit)
 
@@ -135,6 +146,7 @@ class Machine:
         logger.debug("Checking dispenser errors: {} errors found", error_count)
         return error_count > 0
 
+    # State machine callbacks:
     def on_enter_idling(self, _event):
         logger.info("Entering 'idling' state")
         self.trigger("entertain")
@@ -165,20 +177,22 @@ class Machine:
     def on_enter_oos(self, _event):
         logger.info("Entering 'oos' state")
         self.front_panel.off()
-        self.coin_acceptor.setInhibitOn()
+        self.payment_handler.stop()  # Disable payments in OOS.
+        # (Disable other controls as necessary.)
 
     def on_exit_oos(self, _event):
         logger.info("Exiting 'oos' state")
         self.front_panel.on()
         self.button.enable()
-        self.coin_acceptor.setInhibitOff()
+        self.payment_handler.start()  # Restart payment handling.
 
+    # Other callbacks:
     def on_button_press(self, _event):
         logger.info("Button pressed")
         self.try_trigger("eject_item")
 
     def on_coin_insert(self, value):
-        logger.info("Coin inserted: {}", value)
+        logger.info("Payment received: {}", value)
         self.increase_deposit(value)
         self.stats["cash_box"] += value
         self.p9e.set_int("cash_box", self.stats["cash_box"])
@@ -186,7 +200,7 @@ class Machine:
         self.try_trigger("entertain")
 
     def on_ca_error(self, code):
-        logger.warning("Coin acceptor error: {}", code)
+        logger.warning("Payment handler error: {}", code)
 
     def on_item_ejected(self):
         logger.info("Item ejected")
@@ -208,8 +222,22 @@ class Machine:
         logger.warning("Interrupt signal received")
         self.watchdog.stop()
         self.watchdog.join()
-        self.coin_acceptor.stop()
+        self.payment_handler.stop()
         self.front_panel.off()
         self.button.cleanup()
         self.button_led.cleanup()
         sys.exit(0)
+
+if __name__ == "__main__":
+    machine = Machine()
+
+    # Set up signal handlers for graceful shutdown.
+    signal.signal(signal.SIGINT, machine.sig_handler)
+    signal.signal(signal.SIGTERM, machine.sig_handler)
+
+    # Keep the main thread alive.
+    try:
+        while True:
+            sleep(1)
+    except KeyboardInterrupt:
+        machine.sig_handler(None, None)
