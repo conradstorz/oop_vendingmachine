@@ -193,6 +193,19 @@ class Machine:
             logger.info("Refund timeout: no deposit found.")
         self.trigger("to_idle")
 
+    def on_enter_proceed_to_vend(self, _event):
+        logger.info("Entering 'proceed_to_vend' state. Attempting to vend item...")
+        # Call the dispenser to vend the product. You can choose a product_id or get it from elsewhere.
+        result = self.dispenser.vend("product_id")
+        if result:
+            logger.info("Item vended successfully.")
+            self.on_item_ejected()  # This updates deposit, stats, and creates a receipt.
+        else:
+            logger.error("Vend failed. Transitioning to refund state.")
+            self.trigger("refund")
+        # After vend attempt, return the machine to idle.
+        self.trigger("to_idle")
+
     def on_button_press(self, _event):
         logger.info("Button pressed by customer.")
         # A button press indicates customer interaction: cancel any entertain/refund process.
@@ -247,6 +260,6 @@ if __name__ == "__main__":
 
     try:
         while True:
-            sleep(1)
+            sleep(.001)
     except KeyboardInterrupt:
         machine.sig_handler(None, None)
