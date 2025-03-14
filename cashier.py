@@ -4,8 +4,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-class Cashier:
 
+class Cashier:
     def create_receipt(self, price):
         logger.debug("call cashier.create_receipt({})".format(price))
-
