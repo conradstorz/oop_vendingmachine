@@ -9,12 +9,16 @@ class Dispenser:
     Simulates vending a product and randomly fails.
     """
 
-    def __init__(self):
+    def __init__(self, after_eject=None):
         logger.info("Dummy Dispenser initialized.")
 
     def init(self):
         logger.info("Dummy Dispenser: Initialization complete.")
 
+    def errors(self):
+        # In dummy mode, assume there are no errors.
+        return []
+    
     def vend(self, product_id):
         """
         Simulate vending a product.

@@ -37,8 +37,16 @@ class MDBPaymentHandler(PaymentHandler):
 
     def start(self):
         logger.info("Starting MDBPaymentHandler")
-        self.iface.start()
-        self.mdb_handler.onInitCompleted()
+        if self.iface is not None:
+            self.iface.start()
+            # If there's an initialization method to call on the coin acceptor,
+            # call it here. Otherwise, log that we're running in real mode.
+            if hasattr(self.iface, "onInitCompleted"):
+                self.iface.onInitCompleted()
+            else:
+                logger.info("MDBPaymentHandler: iface has no onInitCompleted method; assuming dummy or alternative mode.")
+        else:
+            logger.info("MDBPaymentHandler: No iface provided; running in dummy mode.")
 
     def stop(self):
         logger.info("Stopping MDBPaymentHandler")
