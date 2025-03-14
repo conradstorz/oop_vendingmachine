@@ -1,8 +1,19 @@
 # -*- coding: utf-8 -*-
-import logging
+from loguru import logger
 import sys
 from time import sleep
-from custom_state_machine import CustomStateMachine
+import os
+
+# Loguru configuration
+os.makedirs("LOGS", exist_ok=True)
+logger.remove()
+logger.add("LOGS/vending_machine_{time:YYYY-MM-DD}.log",
+           rotation="00:00",
+           level="DEBUG",
+           retention="7 days",
+           backtrace=True,
+           diagnose=True)
+
 import sound
 import one_off_file_storage as PersistentStorage
 import watchdog
@@ -15,8 +26,7 @@ from button import Button
 from dispenser import Dispenser
 from cashier import Cashier
 
-logger = logging.getLogger(__name__)
-logging.getLogger("transitions").setLevel(logging.INFO)
+logger.info("Setting up Machine...")
 
 class Machine:
     states = [
@@ -78,51 +88,51 @@ class Machine:
         self.watchdog.start()
         logger.info("Watchdog thread started.")
         self.trigger("idle")
-        logger.info("Machine initialized with state: %s, deposit: %d", self.state, self.deposit)
+        logger.info("Machine initialized with state: '{}', deposit: {}", self.state, self.deposit)
 
     @property
     def state(self):
         return self.sm.state
 
     def trigger(self, trigger_name):
-        logger.debug("Machine.trigger called with trigger '%s'", trigger_name)
+        logger.debug("Machine.trigger called with trigger '{}'", trigger_name)
         self.sm.trigger(trigger_name)
-        logger.debug("Machine state after trigger: %s", self.state)
+        logger.debug("Machine state after trigger: '{}'", self.state)
 
     def try_trigger(self, trigger_name):
         valid_triggers = self.sm.get_triggers(self.state)
-        logger.debug("Available triggers from state '%s': %s", self.state, valid_triggers)
+        logger.debug("Available triggers from state '{}': {}", self.state, valid_triggers)
         if trigger_name in valid_triggers:
-            logger.debug("Attempting trigger '%s'", trigger_name)
+            logger.debug("Attempting trigger '{}'", trigger_name)
             try:
                 self.trigger(trigger_name)
             except Exception as e:
-                logger.error("Failed to trigger '%s': %s", trigger_name, e)
+                logger.error("Failed to trigger '{}': {}", trigger_name, e)
         else:
-            logger.warning("Trigger '%s' not valid from state '%s'", trigger_name, self.state)
+            logger.warning("Trigger '{}' not valid from state '{}'", trigger_name, self.state)
 
     def increase_deposit(self, value):
-        logger.debug("Increasing deposit by %d", value)
+        logger.debug("Increasing deposit by {}", value)
         self.deposit += value
         self.p9e.set_int("deposit", self.deposit)
-        logger.info("Current deposit after increase: %d", self.deposit)
+        logger.info("Current deposit after increase: {}", self.deposit)
 
     def decrease_deposit(self, value):
-        logger.debug("Decreasing deposit by %d", value)
+        logger.debug("Decreasing deposit by {}", value)
         self.deposit -= value
         self.p9e.set_int("deposit", self.deposit)
-        logger.info("Current deposit after decrease: %d", self.deposit)
+        logger.info("Current deposit after decrease: {}", self.deposit)
 
     def has_deposit(self, *event):
         result = self.deposit >= self.item_price
-        logger.debug("Checking deposit condition: deposit=%d, item_price=%d, result=%s",
+        logger.debug("Checking deposit condition: deposit={}, item_price={}, result={}",
                      self.deposit, self.item_price, result)
         return result
 
     def has_errors(self):
         errors = self.dispenser.errors()
         error_count = len(errors)
-        logger.debug("Checking dispenser errors: %d errors found", error_count)
+        logger.debug("Checking dispenser errors: {} errors found", error_count)
         return error_count > 0
 
     def on_enter_idling(self, _event):
@@ -168,15 +178,15 @@ class Machine:
         self.try_trigger("eject_item")
 
     def on_coin_insert(self, value):
-        logger.info("Coin inserted: %d", value)
+        logger.info("Coin inserted: {}", value)
         self.increase_deposit(value)
         self.stats["cash_box"] += value
         self.p9e.set_int("cash_box", self.stats["cash_box"])
-        logger.debug("Updated cash box: %d", self.stats["cash_box"])
+        logger.debug("Updated cash box: {}", self.stats["cash_box"])
         self.try_trigger("entertain")
 
     def on_ca_error(self, code):
-        logger.warning("Coin acceptor error: %s", code)
+        logger.warning("Coin acceptor error: {}", code)
 
     def on_item_ejected(self):
         logger.info("Item ejected")
@@ -184,7 +194,7 @@ class Machine:
         self.decrease_deposit(self.item_price)
         self.stats["items_sold"] += 1
         self.p9e.set_int("items_sold", self.stats["items_sold"])
-        logger.debug("Updated items sold: %d", self.stats["items_sold"])
+        logger.debug("Updated items sold: {}", self.stats["items_sold"])
 
     def on_error(self):
         logger.warning("Error detected by watchdog, turning machine off")
