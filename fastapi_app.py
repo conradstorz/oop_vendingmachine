@@ -1,32 +1,34 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from VMC_main import Machine
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+from VMC_main import Machine
 
-# Create the FastAPI application
 app = FastAPI(
     title="Vending Machine API",
     description="API to access machine activity and test functions",
     version="1.0"
 )
 
-# Mount the static directory with html=True to serve index.html at the root.
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust as needed.
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Instantiate the machine once at startup.
-# (The Machine class sets up the hardware abstractions, state machine, watchdog, etc.)
+# Instantiate the machine from your VMC_main.
 machine = Machine()
 
-# Pydantic model for coin insertion
+# Pydantic model for coin insertion.
 class CoinInsert(BaseModel):
     amount: int
 
 @app.get("/machine/status")
 def get_status():
-    """
-    Returns the current machine status, including state, deposit, and statistics.
-    """
     return {
         "state": machine.state,
         "deposit": machine.deposit,
@@ -35,9 +37,6 @@ def get_status():
 
 @app.post("/machine/button_press")
 def simulate_button_press():
-    """
-    Simulate a button press event.
-    """
     try:
         machine.on_button_press(None)
         return {"message": "Button press simulated."}
@@ -46,10 +45,8 @@ def simulate_button_press():
 
 @app.post("/machine/coin_insert")
 def simulate_coin_insert(coin: CoinInsert):
-    """
-    Simulate a coin insert event by providing the coin amount.
-    """
     try:
+        # Call the machine's coin insert function, which updates the deposit.
         machine.on_coin_insert(coin.amount)
         return {"message": f"Coin inserted: {coin.amount}"}
     except Exception as e:
@@ -57,9 +54,6 @@ def simulate_coin_insert(coin: CoinInsert):
 
 @app.post("/machine/vend_item")
 def simulate_vend_item():
-    """
-    Simulate the vend item event.
-    """
     try:
         machine.trigger("vend_item_now")
         return {"message": "Vend item triggered."}
@@ -68,16 +62,19 @@ def simulate_vend_item():
 
 @app.post("/machine/trigger")
 def trigger_event(trigger_name: str):
-    """
-    Trigger an arbitrary event on the state machine.
-    Useful for testing specific transitions.
-    """
     try:
         machine.trigger(trigger_name)
         return {"message": f"Triggered '{trigger_name}'."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# Provide a root endpoint that returns your index.html.
+@app.get("/")
+def read_index():
+    return FileResponse("static/index.html")
+
+# Mount the static files on a subpath (here "/static").
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 if __name__ == "__main__":
-    # Run the FastAPI app using uvicorn.
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
