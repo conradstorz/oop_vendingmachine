@@ -50,7 +50,14 @@ class MDBPaymentHandler(PaymentHandler):
 
     def stop(self):
         logger.info("Stopping MDBPaymentHandler")
-        self.mdb_handler.stop()
+        if self.iface is not None:
+            try:
+                self.iface.stop()
+            except AttributeError:
+                logger.warning("MDBPaymentHandler: iface has no stop() method.")
+        else:
+            logger.info("MDBPaymentHandler: No iface provided; running in dummy mode, nothing to stop.")
+
 
 
 class OnlinePaymentHandler(PaymentHandler):
