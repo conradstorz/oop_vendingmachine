@@ -27,9 +27,9 @@ logger.add("LOGS/vending_machine_{time:YYYY-MM-DD}.log",
            diagnose=True)
 
 import sound
-import one_off_file_storage as PersistentStorage
+from one_off_file_storage import OneOffFileStorage as PersistentStorage
 import watchdog
-import config
+from configuration import config
 
 # Hardware abstraction: these modules should now provide dummy implementations
 # for testing on non-Pi platforms.
@@ -37,7 +37,6 @@ from i2c_relay import I2cRelay
 from button import Button
 from dispenser import Dispenser
 from cashier import Cashier
-from coin_acceptor import SerialInterface
 from payment_handler import MDBPaymentHandler, OnlinePaymentHandler
 from custom_state_machine import CustomStateMachine
 
@@ -89,7 +88,6 @@ class Machine:
         # For now we use MDBPaymentHandler (which reuses the coin acceptor logic).
         # Later, you can switch to OnlinePaymentHandler as needed.
         self.payment_handler = MDBPaymentHandler(
-            # iface=SerialInterface(config.get("coin_acceptor", "interface")),
             iface=None,
             on_payment_received=self.on_coin_insert,
             on_error=self.on_ca_error,
