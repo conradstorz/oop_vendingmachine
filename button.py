@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 try:
     import RPi.GPIO as GPIO
 except ImportError:
@@ -10,6 +8,8 @@ except ImportError:
         FALLING = "FALLING"
         BOTH = "BOTH"
         PUD_DOWN = "PUD_DOWN"
+        IN = "IN"    # Added dummy attribute for input mode.
+        OUT = "OUT"  # (Optional: if you need output mode)
         _mode = None
 
         @classmethod
@@ -28,7 +28,7 @@ except ImportError:
         @classmethod
         def add_event_detect(cls, channel, edge, callback, bouncetime=200):
             print(f"DummyGPIO: add_event_detect(channel={channel}, edge={edge}, bouncetime={bouncetime})")
-            # Optionally, you could simulate an event after a delay if needed.
+            # Optionally, simulate an event after a delay if needed.
 
         @classmethod
         def remove_event_detect(cls, channel):
@@ -39,6 +39,7 @@ except ImportError:
             print(f"DummyGPIO: cleanup(channel={channel})")
 
     GPIO = DummyGPIO
+
 
 class Button:
     def __init__(self, gpio_pin, on_press):
