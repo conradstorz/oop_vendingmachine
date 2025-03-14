@@ -1,15 +1,11 @@
 # -*- coding: utf-8 -*-
-# Author: Vladimir Gorodulin (modified)
-
 import logging
 import sys
 from time import sleep
-from custom_state_machine import (
-    CustomStateMachine,
-)  # Updated import for the state machine
+from custom_state_machine import CustomStateMachine
 import sound
 import one_off_file_storage as PersistentStorage
-import watchdog  # Assumes watchdog provides a Watchdog class
+import watchdog
 import config
 
 # Updated imports for missing classes
@@ -22,39 +18,26 @@ from cashier import Cashier
 logger = logging.getLogger(__name__)
 logging.getLogger("transitions").setLevel(logging.INFO)
 
-
 class Machine:
     states = [
-        {"name": "oos"},  # 'oos' stands for 'out of service'
+        {"name": "oos"},
         {"name": "idling"},
-        {
-            "name": "entertaining",
-            "timeout": config.getint("button", "press_timeout", fallback=10),
-            "on_timeout": "on_timeout_entertaining",
-        },
+        {"name": "entertaining",
+         "timeout": config.getint("button", "press_timeout", fallback=10),
+         "on_timeout": "on_timeout_entertaining"},
         {"name": "ejecting"},
     ]
 
     transitions = [
         {"trigger": "idle", "source": ["oos", "ejecting"], "dest": "idling"},
-        {
-            "trigger": "entertain",
-            "source": "idling",
-            "dest": "entertaining",
-            "conditions": "has_deposit",
-        },
-        {
-            "trigger": "eject_item",
-            "source": "entertaining",
-            "dest": "ejecting",
-            "conditions": "has_deposit",
-        },
+        {"trigger": "entertain", "source": "idling", "dest": "entertaining", "conditions": "has_deposit"},
+        {"trigger": "eject_item", "source": "entertaining", "dest": "ejecting", "conditions": "has_deposit"},
         {"trigger": "recover", "source": "oos", "dest": "idling"},
         {"trigger": "turn_off", "source": ["idling", "entertaining"], "dest": "oos"},
     ]
 
     def __init__(self, kwargs=None):
-        # Initialize the state machine with this instance as the model
+        logger.info("Initializing Machine...")
         self.sm = CustomStateMachine(
             model=self,
             states=Machine.states,
@@ -62,9 +45,7 @@ class Machine:
             send_event=True,
             initial="oos",
         )
-        self.p9e = PersistentStorage(
-            config.get("persistence", "directory")
-        )  # 'p9e' stands for 'persistence'
+        self.p9e = PersistentStorage(config.get("persistence", "directory"))
         self.deposit = self.p9e.get_int("deposit", fallback=0)
         self.stats = {
             "cash_box": self.p9e.get_int("cash_box", fallback=0),
@@ -75,7 +56,6 @@ class Machine:
         self.button = Button(
             gpio_pin=config.getint("button", "gpio_pin"), on_press=self.on_button_press
         )
-        # Using I2cRelay for the button LED as well
         self.button_led = I2cRelay(**dict(config.items("button_led")))
         self.dispenser = Dispenser(after_eject=self.on_item_ejected)
         self.cashier = Cashier()
@@ -88,126 +68,130 @@ class Machine:
             error_cb=self.on_ca_error,
         )
         self.coin_acceptor_interface.start()
-        sleep(
-            2
-        )  # See https://github.com/pyserial/pyserial/issues/86#issuecomment-515116454
+        logger.info("Coin acceptor interface started, waiting for stabilization...")
+        sleep(2)
         self.watchdog = watchdog.Watchdog(
             error_probe_cb=self.has_errors,
             on_error_cb=self.on_error,
             on_recover_cb=self.on_recover,
         )
         self.watchdog.start()
+        logger.info("Watchdog thread started.")
         self.trigger("idle")
+        logger.info("Machine initialized with state: %s, deposit: %d", self.state, self.deposit)
 
     @property
     def state(self):
-        # Expose the current state from the state machine
         return self.sm.state
 
     def trigger(self, trigger_name):
-        """Proxy trigger calls to the state machine."""
+        logger.debug("Machine.trigger called with trigger '%s'", trigger_name)
         self.sm.trigger(trigger_name)
+        logger.debug("Machine state after trigger: %s", self.state)
 
     def try_trigger(self, trigger_name):
-        """Run trigger only if it is valid from the current state."""
         valid_triggers = self.sm.get_triggers(self.state)
+        logger.debug("Available triggers from state '%s': %s", self.state, valid_triggers)
         if trigger_name in valid_triggers:
-            self.trigger(trigger_name)
+            logger.debug("Attempting trigger '%s'", trigger_name)
+            try:
+                self.trigger(trigger_name)
+            except Exception as e:
+                logger.error("Failed to trigger '%s': %s", trigger_name, e)
+        else:
+            logger.warning("Trigger '%s' not valid from state '%s'", trigger_name, self.state)
 
     def increase_deposit(self, value):
-        logger.debug("call increase_deposit({})".format(value))
+        logger.debug("Increasing deposit by %d", value)
         self.deposit += value
         self.p9e.set_int("deposit", self.deposit)
-        logger.debug("Current deposit: {}".format(self.deposit))
+        logger.info("Current deposit after increase: %d", self.deposit)
 
     def decrease_deposit(self, value):
-        logger.debug("call decrease_deposit({})".format(value))
+        logger.debug("Decreasing deposit by %d", value)
         self.deposit -= value
         self.p9e.set_int("deposit", self.deposit)
-        logger.debug("Current deposit: {}".format(self.deposit))
+        logger.info("Current deposit after decrease: %d", self.deposit)
 
     def has_deposit(self, *event):
-        return self.deposit >= self.item_price
+        result = self.deposit >= self.item_price
+        logger.debug("Checking deposit condition: deposit=%d, item_price=%d, result=%s",
+                     self.deposit, self.item_price, result)
+        return result
 
     def has_errors(self):
-        # Assumes dispenser.errors() returns an iterable of errors
-        return len(self.dispenser.errors()) > 0
+        errors = self.dispenser.errors()
+        error_count = len(errors)
+        logger.debug("Checking dispenser errors: %d errors found", error_count)
+        return error_count > 0
 
-    # State machine callbacks:
     def on_enter_idling(self, _event):
-        logger.debug("call on_enter_idling()")
+        logger.info("Entering 'idling' state")
         self.trigger("entertain")
 
     def on_exit_idling(self, _event):
-        logger.debug("call on_exit_idling()")
+        logger.info("Exiting 'idling' state")
 
     def on_enter_entertaining(self, _event):
-        logger.debug("call on_enter_entertaining()")
+        logger.info("Entering 'entertaining' state")
         self.button_led.on()
-        # Optionally enable button or play music:
-        # self.button.enable()
-        # sound.play_random(sound.MUSIC)
 
     def on_exit_entertaining(self, _event):
-        logger.debug("call on_exit_entertaining()")
+        logger.info("Exiting 'entertaining' state")
         self.button_led.off()
-        # Optionally disable button or stop sound:
-        # self.button.disable()
-        # sound.stop()
 
     def on_timeout_entertaining(self, _event):
-        logger.debug("call on_timeout_entertaining()")
+        logger.info("Timeout in 'entertaining' state, triggering eject")
         self.trigger("eject_item")
 
     def on_enter_ejecting(self, _event):
-        logger.debug("call on_enter_ejecting()")
-        # sound.play_random(sound.BUTTON_PRESS)
+        logger.info("Entering 'ejecting' state")
         self.dispenser.eject()
         self.try_trigger("idle")
 
     def on_exit_ejecting(self, _event):
-        logger.debug("call on_exit_ejecting()")
-        # sound.stop()
+        logger.info("Exiting 'ejecting' state")
 
     def on_enter_oos(self, _event):
-        logger.debug("call on_enter_oos()")
+        logger.info("Entering 'oos' state")
         self.front_panel.off()
         self.coin_acceptor.setInhibitOn()
 
     def on_exit_oos(self, _event):
-        logger.debug("call on_exit_oos()")
+        logger.info("Exiting 'oos' state")
         self.front_panel.on()
         self.button.enable()
         self.coin_acceptor.setInhibitOff()
 
-    # Other callbacks:
     def on_button_press(self, _event):
-        logger.debug("call on_button_press()")
+        logger.info("Button pressed")
         self.try_trigger("eject_item")
 
     def on_coin_insert(self, value):
-        logger.debug("call on_coin_insert({})".format(value))
+        logger.info("Coin inserted: %d", value)
         self.increase_deposit(value)
         self.stats["cash_box"] += value
         self.p9e.set_int("cash_box", self.stats["cash_box"])
-        # sound.play_random(sound.COIN_INSERT)
+        logger.debug("Updated cash box: %d", self.stats["cash_box"])
         self.try_trigger("entertain")
 
     def on_ca_error(self, code):
-        logger.warning("call on_ca_error({})".format(code))
+        logger.warning("Coin acceptor error: %s", code)
 
     def on_item_ejected(self):
+        logger.info("Item ejected")
         self.cashier.create_receipt(self.item_price)
         self.decrease_deposit(self.item_price)
         self.stats["items_sold"] += 1
         self.p9e.set_int("items_sold", self.stats["items_sold"])
+        logger.debug("Updated items sold: %d", self.stats["items_sold"])
 
     def on_error(self):
-        logger.debug("call on_error()")
+        logger.warning("Error detected by watchdog, turning machine off")
         self.try_trigger("turn_off")
 
     def on_recover(self):
-        logger.debug("call on_recover()")
+        logger.info("Recovery detected by watchdog, recovering machine")
         self.try_trigger("recover")
 
     def sig_handler(self, sig, frame):

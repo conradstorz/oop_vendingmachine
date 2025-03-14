@@ -1,64 +1,62 @@
+import logging
+
 class CustomStateMachine:
     def __init__(self, model, states, transitions, send_event=False, initial=None):
+        self.logger = logging.getLogger(__name__)
         self.model = model
         self.send_event = send_event
         self.states = {state["name"]: state for state in states}
         self.transitions = transitions
         self.state = initial
-        # Optionally, attach trigger methods to the model:
+        self.logger.debug("Initialized CustomStateMachine with initial state '%s'", self.state)
+        # Attach trigger methods to the model if not already present.
         for transition in transitions:
             trigger_name = transition["trigger"]
             if not hasattr(model, trigger_name):
-                # Attach a simple method that calls our trigger function
                 setattr(model, trigger_name, lambda tn=trigger_name: self.trigger(tn))
 
     def trigger(self, trigger_name):
-        # Find all transitions with the matching trigger from the current state.
+        self.logger.debug("Attempting trigger '%s' from state '%s'", trigger_name, self.state)
         valid_transitions = [
-            t
-            for t in self.transitions
-            if t["trigger"] == trigger_name
-            and (
-                isinstance(t["source"], list)
-                and self.state in t["source"]
-                or self.state == t["source"]
+            t for t in self.transitions
+            if t["trigger"] == trigger_name and (
+                (isinstance(t["source"], list) and self.state in t["source"]) or (self.state == t["source"])
             )
         ]
+        self.logger.debug("Found %d valid transitions for trigger '%s'", len(valid_transitions), trigger_name)
         for t in valid_transitions:
-            # Check conditions if provided.
             if "conditions" in t:
-                # Assume conditions is a method name on the model that returns True/False.
                 condition = getattr(self.model, t["conditions"])
-                if not condition():
-                    continue  # Skip this transition if condition fails.
+                condition_result = condition()
+                self.logger.debug("Evaluating condition '%s': %s", t["conditions"], condition_result)
+                if not condition_result:
+                    self.logger.debug("Condition '%s' failed, skipping this transition", t["conditions"])
+                    continue
 
-            # Call the on_exit callback of the current state, if defined.
             exit_callback_name = f"on_exit_{self.state}"
             if hasattr(self.model, exit_callback_name):
+                self.logger.debug("Calling exit callback '%s'", exit_callback_name)
                 getattr(self.model, exit_callback_name)(None)
 
-            # Transition to the new state.
+            self.logger.info("Transitioning from '%s' to '%s' via trigger '%s'", self.state, t["dest"], trigger_name)
             self.state = t["dest"]
 
-            # Call the on_enter callback of the new state, if defined.
             enter_callback_name = f"on_enter_{self.state}"
             if hasattr(self.model, enter_callback_name):
+                self.logger.debug("Calling enter callback '%s'", enter_callback_name)
                 getattr(self.model, enter_callback_name)(None)
 
-            # Transition complete.
+            self.logger.debug("Completed trigger '%s'; new state: '%s'", trigger_name, self.state)
             return
-        # If no valid transition was found, optionally log or handle it.
-        raise Exception(
-            f"No valid transition for trigger {trigger_name} from state {self.state}"
-        )
+
+        self.logger.error("No valid transition for trigger '%s' from state '%s'", trigger_name, self.state)
+        raise Exception(f"No valid transition for trigger {trigger_name} from state {self.state}")
 
     def get_triggers(self, current_state):
-        # Return a list of triggers that are valid from the current state.
         triggers = []
         for t in self.transitions:
             source = t["source"]
-            if (
-                isinstance(source, list) and current_state in source
-            ) or current_state == source:
+            if (isinstance(source, list) and current_state in source) or current_state == source:
                 triggers.append(t["trigger"])
+        self.logger.debug("Available triggers from state '%s': %s", current_state, triggers)
         return triggers
