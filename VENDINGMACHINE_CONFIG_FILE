@@ -15,9 +15,6 @@ item_name=ticket
 [business]
 inn=770000000000
 
-[coin_acceptor]
-interface=/dev/ttyUSB0
-
 [button]
 gpio_pin=27
 press_timeout=10

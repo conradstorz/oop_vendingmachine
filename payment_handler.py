@@ -1,6 +1,5 @@
 # payment_handler.py
 from loguru import logger
-from coin_acceptor import MyCoinAcceptor, SerialInterface
 
 class PaymentHandler:
     """
@@ -27,12 +26,6 @@ class MDBPaymentHandler(PaymentHandler):
     def __init__(self, iface, on_payment_received, on_error):
         super().__init__(on_payment_received, on_error)
         self.iface = iface
-        # Use the existing MyCoinAcceptor to handle coin payments.
-        self.mdb_handler = MyCoinAcceptor(
-            iface,
-            insert_cb=self._handle_payment,
-            error_cb=self._handle_error,
-        )
 
     def _handle_payment(self, value):
         logger.info("MDBPaymentHandler received payment: {}", value)
