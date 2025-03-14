@@ -166,7 +166,7 @@ class Machine:
         # For dummy mode, assume dispenser.errors() returns an empty list.
         errors = self.dispenser.errors() if hasattr(self.dispenser, "errors") else []
         error_count = len(errors)
-        logger.debug("Checking dispenser errors: {} errors found", error_count)
+        # logger.debug("Checking dispenser errors: {} errors found", error_count)
         return error_count > 0
 
     # State machine callbacks:

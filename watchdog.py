@@ -28,7 +28,7 @@ class Watchdog(threading.Thread):
             if self._stop_event.wait(self.interval):
                 break
             state = self.error_probe_cb()
-            logger.debug("Watchdog check: current error state: {}", state)
+            # logger.debug("Watchdog check: current error state: {}", state)
             if last != state:
                 logger.info("Error state changed from {} to {}. Executing callback.", last, state)
                 callback = self.callback_for.get(state)
