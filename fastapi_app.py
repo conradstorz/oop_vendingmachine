@@ -52,7 +52,7 @@ def simulate_coin_insert(coin: CoinInsert):
 
 def schedule_idle():
     import time
-    time.sleep(0.1)  # slight delay to let the vend process complete
+    time.sleep(1)  # slight delay to let the vend process complete
     try:
         machine.trigger("to_idle")
     except Exception as e:
