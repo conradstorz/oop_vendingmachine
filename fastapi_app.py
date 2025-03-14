@@ -1,10 +1,10 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from VMC_main import Machine
+from pydantic import BaseModel
 
 app = FastAPI(
     title="Vending Machine API",
@@ -14,16 +14,14 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust as needed.
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Instantiate the machine from your VMC_main.
-machine = Machine()
+machine = Machine()  # Instantiate your machine
 
-# Pydantic model for coin insertion.
 class CoinInsert(BaseModel):
     amount: int
 
@@ -52,10 +50,21 @@ def simulate_coin_insert(coin: CoinInsert):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+def schedule_idle():
+    import time
+    time.sleep(0.1)  # slight delay to let the vend process complete
+    try:
+        machine.trigger("to_idle")
+    except Exception as e:
+        # Log the error; if you have a logger set up, use that.
+        print("Error triggering to_idle:", e)
+
 @app.post("/machine/vend_item")
-def simulate_vend_item():
+def simulate_vend_item(background_tasks: BackgroundTasks):
     try:
         machine.trigger("vend_item_now")
+        # Schedule the delayed trigger back to idle as a background task.
+        background_tasks.add_task(schedule_idle)
         return {"message": "Vend item triggered."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
