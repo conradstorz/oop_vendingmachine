@@ -5,13 +5,13 @@
 import logging
 import sys
 from time import sleep
-from . import CustomStateMachine
+from .VendingMachineController import CustomStateMachine
 from cctalk import SerialInterface
-from VMCfiles.sound import sound
+from VMCfiles import sound
 from VMCfiles.persistence import OneOffFileStorage as PersistentStorage
 from VMCfiles.watchdog import Watchdog
 from VMCfiles.i2c_relay import I2cRelay
-from VMCfiles.config.config import config
+from VMCfiles.config import config
 from VMCfiles.coin_acceptor import MyCoinAcceptor
 from VMCfiles.dispenser import Dispenser
 from VMCfiles.cashier import Cashier
